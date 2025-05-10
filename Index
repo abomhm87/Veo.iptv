@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>MAHER TV </title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <style>
+    body {
+      background-color: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      direction: rtl;
+    }
+    header {
+      background-color: #222;
+      padding: 20px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+      color: #ffcc00;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+    }
+    #now-playing {
+      text-align: center;
+      color: #ffcc00;
+      font-size: 20px;
+      margin-top: 10px;
+    }
+    #video-container {
+      width: 90%;
+      max-width: 800px;
+      margin: 20px auto;
+      background-color: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 0 15px rgba(255,255,255,0.1);
+    }
+    video {
+      width: 100%;
+      height: auto;
+    }
+    .channel-block {
+      width: 90%;
+      max-width: 800px;
+      margin: 30px auto;
+      background-color: #1a1a1a;
+      padding: 15px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(255,255,255,0.05);
+      transition: 0.3s;
+    }
+    .channel-block:hover {
+      background-color: #333;
+    }
+    .channel-title {
+      font-size: 22px;
+      margin-bottom: 10px;
+      color: #ffcc00;
+      text-align: center;
+    }
+    .quality-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .quality-buttons button {
+      background: #333;
+      color: #fff;
+      border: none;
+      padding: 10px 16px;
+      font-size: 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .quality-buttons button:hover,
+    .quality-buttons button:focus {
+      background-color: #ffcc00;
+      color: #000;
+      outline: none;
+    }
+    #channel-preview {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: rgba(0,0,0,0.7);
+      color: #ffcc00;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 18px;
+      z-index: 1000;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>MAHER TV</header>
+
+<div id="now-playing">القناة الحالية: لا شيء</div>
+
+<div id="video-container">
+  <video id="video" controls></video>
+</div>
+
+<div id="channels-container"></div>
+
+<div id="channel-preview"></div>
+
+<script>
+  const playlist = Array.from({ length: 10 }, (_, i) => {
+    const channelNum = i + 1;
+    const port = 7001 + channelNum;
+    return {
+      name: `Bein Sport ${channelNum}`,
+      base: `http://stream.mytvplus.net:${port}/sport/ch${channelNum}/ch${channelNum}`
+    };
+  });
+
+  let currentIndex = 0;
+  let currentHls;
+
+  function playStream(url, index = null, name = null) {
+    const video = document.getElementById('video');
+    const nowPlaying = document.getElementById('now-playing');
+
+    if (index !== null) currentIndex = index;
+
+    if (currentHls) {
+      currentHls.destroy();
+      currentHls = null;
+    }
+
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(url);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, function () {
+        video.play();
+      });
+      currentHls = hls;
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      video.src = url;
+      video.addEventListener('loadedmetadata', function () {
+        video.play();
+      });
+    }
+
+    nowPlaying.textContent = "القناة الحالية: " + (name || playlist[currentIndex].name);
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    video.onended = () => {
+      currentIndex = (currentIndex + 1) % playlist.length;
+      const next = playlist[currentIndex];
+      playStream(next.base + '_adaptive.m3u8', currentIndex, next.name);
+    };
+  }
+
+  function renderChannels() {
+    const container = document.getElementById('channels-container');
+    playlist.forEach((channel, index) => {
+      const block = document.createElement('div');
+      block.className = 'channel-block';
+
+      const title = document.createElement('div');
+      title.className = 'channel-title';
+      title.textContent = channel.name;
+
+      const buttons = document.createElement('div');
+      buttons.className = 'quality-buttons';
+
+      const qualities = [
+        { label: 'Auto', suffix: '_adaptive.m3u8' },
+        { label: '240', suffix: '_240.m3u8' },
+        { label: '360', suffix: '_360.m3u8' },
+        { label: '720', suffix: '_720.m3u8' },
+        { label: '1080', suffix: '_1080.m3u8' }
+      ];
+
+      qualities.forEach(q => {
+        const btn = document.createElement('button');
+        btn.textContent = q.label;
+        btn.tabIndex = 0;
+        btn.onclick = () => playStream(channel.base + q.suffix, index, `${channel.name} - ${q.label}`);
+        buttons.appendChild(btn);
+      });
+
+      block.appendChild(title);
+      block.appendChild(buttons);
+      container.appendChild(block);
+    });
+  }
+
+  function showChannelPreview(name) {
+    const preview = document.getElementById('channel-preview');
+    preview.textContent = name;
+    preview.style.display = 'block';
+
+    clearTimeout(showChannelPreview.timeout);
+    showChannelPreview.timeout = setTimeout(() => {
+      preview.style.display = 'none';
+    }, 3000);
+  }
+
+  let selectedChannelIndex = 0;
+  let selectedQualityIndex = 0;
+
+  function highlightSelected() {
+    const blocks = document.querySelectorAll('.channel-block');
+    blocks.forEach((block, index) => {
+      block.style.border = index === selectedChannelIndex ? '2px solid #ffcc00' : 'none';
+    });
+
+    const selectedBlock = blocks[selectedChannelIndex];
+    if (selectedBlock) {
+      const buttons = selectedBlock.querySelectorAll('button');
+      buttons.forEach((btn, i) => {
+        btn.style.backgroundColor = i === selectedQualityIndex ? '#ffcc00' : '#333';
+        btn.style.color = i === selectedQualityIndex ? '#000' : '#fff';
+      });
+
+      const channelName = playlist[selectedChannelIndex].name;
+      const quality = buttons[selectedQualityIndex]?.textContent || '';
+      showChannelPreview(`${channelName} - ${quality}`);
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    const blocks = document.querySelectorAll('.channel-block');
+    const currentBlock = blocks[selectedChannelIndex];
+    const buttons = currentBlock ? currentBlock.querySelectorAll('button') : [];
+
+    switch (e.key) {
+      case 'ArrowDown':
+        selectedChannelIndex = (selectedChannelIndex + 1) % blocks.length;
+        selectedQualityIndex = 0;
+        break;
+      case 'ArrowUp':
+        selectedChannelIndex = (selectedChannelIndex - 1 + blocks.length) % blocks.length;
+        selectedQualityIndex = 0;
+        break;
+      case 'ArrowRight':
+        if (buttons.length > 0) {
+          selectedQualityIndex = (selectedQualityIndex + 1) % buttons.length;
+        }
+        break;
+      case 'ArrowLeft':
+        if (buttons.length > 0) {
+          selectedQualityIndex = (selectedQualityIndex - 1 + buttons.length) % buttons.length;
+        }
+        break;
+      case 'Enter':
+        if (buttons.length > 0) {
+          buttons[selectedQualityIndex].click();
+        }
+        break;
+      case ' ':
+        const video = document.getElementById('video');
+        if (video.paused) {
+          video.play();
+        } else {
+          video.pause();
+        }
+        break;
+    }
+
+    highlightSelected();
+  });
+
+  renderChannels();
+
+</script>
+
+</body>
+</html>
